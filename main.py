@@ -19,6 +19,7 @@ async def on_ready():
 @client.event
 async def on_message(message):
     msg = message.content
+    #bot
     if message.author == client.user:
         return
     
@@ -26,7 +27,18 @@ async def on_message(message):
     if any(word in msg for word in greetings):
       await message.channel.send(random.choice(options))
 
+    #reactions
+    if msg == 'cool':
+        await message.add_reaction('\U0001F60E')
+    
+    #custom cmd
     if msg.startswith('>status'):
         await message.channel.send('You are online.')
+
+#reaction feedback
+@client.event
+async def on_reaction_add(reaction, user):
+    await reaction.message.channel.send(f'{user} reacted with {reaction.emoji}')
+
 
 client.run('OTI0NTM3NTc2MzUyNzkyNjU3.YcgAtw.o3ehnoqsLaEQcQtv_ErabXgJuGU')
