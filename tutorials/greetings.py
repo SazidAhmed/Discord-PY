@@ -1,5 +1,6 @@
 import discord
 import random
+from config.settings import DISCORD_TOKEN
 
 client = discord.Client()
 
@@ -41,4 +42,4 @@ async def on_reaction_add(reaction, user):
     await reaction.message.channel.send(f'{user} reacted with {reaction.emoji}')
 
 
-client.run('OTI0NTM3NTc2MzUyNzkyNjU3.YcgAtw.o3ehnoqsLaEQcQtv_ErabXgJuGU')
+client.run(DISCORD_TOKEN)
