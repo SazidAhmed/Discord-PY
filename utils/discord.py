@@ -1,6 +1,5 @@
 import random
 import string
-
 import discord
 
 from config.settings import BOT_ACCOUNT_NUMBER

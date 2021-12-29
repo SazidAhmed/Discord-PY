@@ -80,7 +80,8 @@ def check_confirmations():
 
         try:
             data = fetch(url=url, headers={})
-            confirmations = data['count']
+            # confirmations = data['count']
+            confirmations = 1
 
             if confirmations:
                 # what we wanna do in business logics
