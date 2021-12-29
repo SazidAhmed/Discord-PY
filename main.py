@@ -21,11 +21,93 @@ bot = commands.Bot(command_prefix='>')
 mongo = MongoClient(MONGO_HOST, MONGO_PORT)
 database = mongo[MONGO_DB_NAME]
 
+#collections
 DEPOSITS = database['deposits']
 REGISTRATIONS = database['registrations']
 USERS = database['users']
 
+# deposti confirmation
+def handle_deposit_confirmation(*, deposit):
+    """
+    Update confirmation status of deposit
+    Increase users balance or create new user if they don't already exist
+    """
 
+    DEPOSITS.update_one(
+        {'_id': deposit['_id']},
+        {
+            '$set': {
+                'is_confirmed': True
+            }
+        }
+    )
+
+    registration = REGISTRATIONS.find_one({
+        'account_number': deposit['sender'],
+        'verification_code': deposit['memo']
+    })
+
+    if registration:
+        handle_registration(registration=registration)
+    else:
+        USERS.update_one(
+            {'account_number': deposit['sender']},
+            {
+                '$inc': {
+                    'balance': deposit['amount']
+                }
+            }
+        )
+
+# check deposit confirmation
+def check_confirmations():
+    """
+    Query unconfirmed deposits from database
+    Check bank for confirmation status
+    """
+
+    unconfirmed_deposits = DEPOSITS.find({
+        'confirmation_checks': {'$lt': MAXIMUM_CONFIRMATION_CHECKS},
+        'is_confirmed': False
+    })
+
+    for deposit in unconfirmed_deposits:
+        block_id = deposit['block_id']
+        url = (
+            f'{BANK_PROTOCOL}://{BANK_IP}/confirmation_blocks'
+            f'?block={block_id}'
+        )
+
+        try:
+            data = fetch(url=url, headers={})
+            confirmations = data['count']
+
+            if confirmations:
+                # what we wanna do in business logics
+                handle_deposit_confirmation(deposit=deposit)
+
+        except Exception:
+            pass
+
+        increment_confirmation_checks(deposit=deposit)
+
+# increament confirmation check in DB
+def increment_confirmation_checks(*, deposit):
+    """
+    Increment the number of confirmation checks for the given deposit
+    """
+
+    DEPOSITS.update_one(
+        {'_id': deposit['_id']},
+        {
+            '$inc': {
+                'confirmation_checks': 1
+            }
+        }
+    )
+
+
+#query blockchain and check deposit
 def check_deposits():
     """
     Fetch bank transactions from bank
@@ -60,7 +142,7 @@ def check_deposits():
 
 
 
-@tasks.loop(seconds=5.0)
+@tasks.loop(seconds=10.0)
 async def poll_blockchain():
     """
     Poll blockchain for new transactions/deposits sent to the bot account
@@ -70,6 +152,7 @@ async def poll_blockchain():
     print('Polling blockchain...')
     check_deposits()
     check_confirmations()
+    
 
 @bot.event
 async def on_ready():
@@ -77,12 +160,44 @@ async def on_ready():
     Start polling blockchain
     """
     print('Bot is logged in as {0.user}'.format(bot))
+    poll_blockchain.start()
+
+
+def handle_registration(*, registration):
+    """
+    Ensure account number is not already registered
+    Create a new users or update account number of existing user
+    """
+
+    discord_user_id = registration['_id']
+    account_number_registered = bool(USERS.find_one({'account_number': registration['account_number']}))
+
+    if not account_number_registered:
+        existing_user = USERS.find_one({'_id': discord_user_id})
+
+        if existing_user:
+            USERS.update_one(
+                {'_id': discord_user_id},
+                {
+                    '$set': {
+                        'account_number': registration['account_number']
+                    }
+                }
+            )
+        else:
+            USERS.insert_one({
+                '_id': discord_user_id,
+                'account_number': registration['account_number'],
+                'balance': 0
+            })
+
+    REGISTRATIONS.delete_one({'_id': discord_user_id})
 
 
 @bot.command()
 async def register(ctx, account_number):
     """
-    >register a37e2836805975f334108b55523634c995bd2a4db610062f404510617e83126f
+    >register 8b9706ccfcaa58b20208a7121f869d9429d63cd90c4b6a380ce91f2b3132b05a
     """
 
     if not is_valid_account_number(account_number):
